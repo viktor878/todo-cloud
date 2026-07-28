@@ -4,7 +4,7 @@
 
 The application uses PostgreSQL as the primary relational database.
 
-The database stores user tasks and provides persistent storage for the backend application. Database access is implemented through SQLAlchemy ORM.
+Database access is implemented using SQLAlchemy ORM. Each registered user owns their own tasks. Authentication is based on JSON Web Tokens (JWT).
 
 ---
 
@@ -20,31 +20,55 @@ The database stores user tasks and provides persistent storage for the backend a
 
 # Entity Relationship Diagram
 
-The current version of the application contains a single entity.
+The application contains two main entities.
 
 ```
-+----------------------------------+
-|              Task                |
-+----------------------------------+
-| id              UUID / Integer   |
-| title           VARCHAR          |
-| completed       BOOLEAN          |
-| created_at      TIMESTAMP        |
-| updated_at      TIMESTAMP        |
-+----------------------------------+
++----------------+          +----------------+
+|     User       |          |      Task      |
++----------------+          +----------------+
+| id             |<------┐  | id             |
+| username       |       │  | user_id (FK)   |
+| email          |       └──| title          |
+| password_hash  |          | completed      |
+| created_at     |          | created_at     |
++----------------+          | updated_at     |
+                            +----------------+
 ```
 
-Future versions may introduce additional entities such as User, Category, or Labels.
+Relationship:
+
+```
+One User
+     │
+     └──────────────► Many Tasks
+```
+
+Each task belongs to exactly one user.
+
+---
+
+# Table: users
+
+The `users` table stores registered users.
+
+| Column | Type | Description |
+|---------|------|-------------|
+| id | UUID | Primary key |
+| username | VARCHAR | Username |
+| email | VARCHAR | User email |
+| password_hash | VARCHAR | Hashed password |
+| created_at | TIMESTAMP | Account creation date |
 
 ---
 
 # Table: tasks
 
-The `tasks` table stores all todo items.
+The `tasks` table stores todo items.
 
 | Column | Type | Description |
 |---------|------|-------------|
-| id | UUID / Integer | Primary key |
+| id | UUID | Primary key |
+| user_id | UUID | Foreign key to users.id |
 | title | VARCHAR | Task title |
 | completed | BOOLEAN | Completion status |
 | created_at | TIMESTAMP | Creation date |
@@ -54,25 +78,22 @@ The `tasks` table stores all todo items.
 
 # Relationships
 
-Current version:
-
 ```
-Task
-```
-
-There are no foreign keys in the initial version of the application.
-
-Future versions may include:
-
-```
-User
+users
    │
-   └──────────────┐
-                  │
-                Task
+   │ 1
+   │
+   ▼
+tasks
+   ▲
+   │ *
 ```
 
-where one user can own multiple tasks.
+Relationship type:
+
+- One User → Many Tasks
+
+Every task belongs to exactly one user.
 
 ---
 
@@ -80,21 +101,28 @@ where one user can own multiple tasks.
 
 The backend validates all incoming data before writing it to the database.
 
-Validation rules include:
+User validation:
 
-- title must not be empty
+- username is required
+- email is required
+- email must be unique
+- password is stored only as a hash
+- password must satisfy minimum security requirements
+
+Task validation:
+
+- title is required
+- title cannot be empty
 - title length is limited
 - completed accepts only boolean values
-- id is generated automatically
+- user_id is assigned automatically
 - timestamps are generated automatically
 
 ---
 
 # Database Access
 
-The application interacts with the database through SQLAlchemy ORM.
-
-Application flow:
+The application communicates with the database through SQLAlchemy ORM.
 
 ```
 FastAPI
@@ -108,7 +136,39 @@ SQLAlchemy ORM
 PostgreSQL
 ```
 
-Direct SQL queries are not used in the application code.
+Business logic never communicates directly with PostgreSQL using raw SQL.
+
+---
+
+# Authentication Data
+
+Passwords are never stored in plain text.
+
+The application stores only password hashes.
+
+Authentication is implemented using JWT.
+
+Typical authentication flow:
+
+```
+User Login
+
+↓
+
+Password Verification
+
+↓
+
+JWT Token
+
+↓
+
+Authenticated Requests
+
+↓
+
+Database Access
+```
 
 ---
 
@@ -116,7 +176,7 @@ Direct SQL queries are not used in the application code.
 
 PostgreSQL runs inside a Docker container.
 
-Database files are stored in a Docker volume to ensure that data persists after container restarts.
+Database files are stored inside a Docker Volume to ensure persistence after container restarts.
 
 ```
 Docker Volume
@@ -134,13 +194,15 @@ Persistent Storage
 
 # Future Improvements
 
-Planned database enhancements include:
+Possible future enhancements include:
 
-- User accounts
-- Authentication
 - Task categories
 - Task priorities
 - Due dates
+- File attachments
 - Soft delete
-- Index optimization
-- Database migrations with Alembic
+- Refresh Tokens
+- Email verification
+- Password reset
+- Database indexing optimization
+- Alembic database migrations
